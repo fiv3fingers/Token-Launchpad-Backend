@@ -82,7 +82,7 @@ const handleLaunchEvent = async (event: any) => {
       coinId: response._id,
       record: [
         {
-          holder: response._id,//creator,
+          holder: response.creator,//creator,
           holdingStatus: 0,
           amount: 0,
           tx: "txId",
@@ -109,7 +109,7 @@ const handleSwapEvent = async (event: any) => {
     console.log("----------------")
     console.log(userId, coin)
     const newTx = {
-      holder: coin?._id,
+      holder: userId?._id,
       holdingStatus: event.direction,
       amountIn: event.amountIn.toNumber(),
       amountOut: event.amountOut.toNumber(),
