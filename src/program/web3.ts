@@ -5,30 +5,32 @@ import {
   Transaction,
   TransactionResponse,
   clusterApiUrl,
-} from '@solana/web3.js';
-import base58 from 'bs58';
-import { Types } from 'mongoose';
-import { AnchorProvider, Program, web3 } from '@coral-xyz/anchor';
-import { Usafun } from './usafun'
-import idl from "./usafun.json"
-import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
-import * as anchor from '@coral-xyz/anchor';
-import { io } from '../sockets';
-import axios from 'axios';
-import Coin from '../models/Coin';
-import User from '../models/User';
-import { Metaplex } from '@metaplex-foundation/js';
-import CoinStatus from '../models/CoinsStatus';
-import { coinKing } from '../controller/coinController';
-import CurveConfig from '../models/CurveConfig';
+} from "@solana/web3.js";
+import base58 from "bs58";
+import { Types } from "mongoose";
+import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
+import { Usafun } from "./usafun";
+import idl from "./usafun.json";
+import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet";
+import * as anchor from "@coral-xyz/anchor";
+import { io } from "../sockets";
+import axios from "axios";
+import Coin from "../models/Coin";
+import User from "../models/User";
+import { Metaplex } from "@metaplex-foundation/js";
+import CoinStatus from "../models/CoinsStatus";
+import { coinKing } from "../controller/coinController";
+import CurveConfig from "../models/CurveConfig";
+import { migrate } from "@metaplex-foundation/mpl-token-metadata";
 // import {
 //   Metadata,
 // } from '@metaplex/js';
 
-require('dotenv').config();
+require("dotenv").config();
 
 export const commitmentLevel = "processed";
-export const endpoint = process.env.PUBLIC_SOLANA_RPC || clusterApiUrl("devnet");
+export const endpoint =
+  process.env.PUBLIC_SOLANA_RPC || clusterApiUrl("devnet");
 export const connection = new Connection(endpoint, commitmentLevel);
 // export const connection = new Connection('https://white-aged-glitter.solana-mainnet.quiknode.pro/743d4e1e3949c3127beb7f7815cf2ca9743b43a6/');
 
@@ -42,13 +44,7 @@ const provider = new AnchorProvider(connection, adminWallet, {
   preflightCommitment: "confirmed",
 });
 anchor.setProvider(provider);
-const program = new Program(
-  pumpProgramInterface,
-  provider
-) as Program<Usafun>;
-
-
-
+const program = new Program(pumpProgramInterface, provider) as Program<Usafun>;
 
 const metaplex = Metaplex.make(connection);
 let token: PublicKey;
@@ -56,11 +52,14 @@ let token: PublicKey;
 const handleLaunchEvent = async (event: any) => {
   console.log("Launch Event received:", event);
   try {
-    const userId = await User.findOne({ wallet: event.creator })
+    const userId = await User.findOne({ wallet: event.creator });
     const token = await metaplex.nfts().findByMint({ mintAddress: event.mint });
 
-    console.log("userID---->", userId?._id)
-    const progressMcap = ((event.tokenSupply.toNumber() * event.reserveLamport.toNumber()) / (event.reserveToken.toNumber() * Math.pow(10, 9))).toFixed(4);
+    console.log("userID---->", userId?._id);
+    const progressMcap = (
+      (event.tokenSupply.toNumber() * event.reserveLamport.toNumber()) /
+      (event.reserveToken.toNumber() * Math.pow(10, 9))
+    ).toFixed(4);
     const newCoin = new Coin({
       creator: userId,
       name: token.name,
@@ -74,27 +73,28 @@ const handleLaunchEvent = async (event: any) => {
       tokenSupply: event.tokenSupply.toNumber(),
       progressMcap,
       limit: event.curveLimit,
-    })
-    console.log("newCoin--->", newCoin)
+    });
+    console.log("newCoin--->", newCoin);
     const response = await newCoin.save();
-    console.log("newCoin", response.creator)
+    console.log("newCoin", response.creator);
     const newCoinStatus = new CoinStatus({
       coinId: response._id,
       record: [
         {
-          holder: response.creator,//creator,
+          holder: response.creator, //creator,
           holdingStatus: 0,
           amount: 0,
           tx: "txId",
-          price: event.reserveLamport.toNumber() / event.reserveToken.toNumber(),
-        }
-      ]
-    })
+          price:
+            event.reserveLamport.toNumber() / event.reserveToken.toNumber(),
+        },
+      ],
+    });
     await newCoinStatus.save();
-    if (io != null) io.emit("TokenCreated", token.name, event.mint)
+    if (io != null) io.emit("TokenCreated", token.name, event.mint);
   } catch (error) {
     console.log("handleLaunchEvent: ", error);
-    return "Token create failed"
+    return "Token create failed";
   }
 };
 
@@ -105,9 +105,9 @@ const handleSwapEvent = async (event: any) => {
   console.log("Swap Event received: sleep end");
   try {
     const coin = await Coin.findOne({ token: event.mint.toString() });
-    const userId = await User.findOne({ wallet: event.user }).select('_id');
-    console.log("----------------")
-    console.log(userId, coin)
+    const userId = await User.findOne({ wallet: event.user }).select("_id");
+    console.log("----------------");
+    console.log(userId, coin);
     const newTx = {
       holder: userId?._id,
       holdingStatus: event.direction,
@@ -115,26 +115,33 @@ const handleSwapEvent = async (event: any) => {
       amountOut: event.amountOut.toNumber(),
       tx: "tx",
       price: event.reserveLamport.toNumber() / event.reserveToken.toNumber(),
-    }
-    console.log("Tx", newTx, event.reserveLamport.toNumber())
-    CoinStatus.findOne({ coinId: coin?._id })
-      .then((coinStatus) => {
-        coinStatus?.record.push(newTx);
-        coinStatus?.save()
-      })
+    };
+    console.log("Tx", newTx, event.reserveLamport.toNumber());
+    CoinStatus.findOne({ coinId: coin?._id }).then((coinStatus) => {
+      coinStatus?.record.push(newTx);
+      coinStatus?.save();
+    });
     console.log("handleSwapEvent::tokenSupply ", coin.tokenSupply);
-    const progressMcap = ((coin.tokenSupply * event.reserveLamport.toNumber()) / (event.reserveToken.toNumber() * Math.pow(10, 9))).toFixed(4);
+    const progressMcap = (
+      (coin.tokenSupply * event.reserveLamport.toNumber()) /
+      (event.reserveToken.toNumber() * Math.pow(10, 9))
+    ).toFixed(4);
     console.log("handleSwapEvent::progressMcap ", progressMcap);
     const updateCoin = await Coin.findOneAndUpdate(
       { token: event.mint },
-      { reserveOne: event.reserveToken, reserveTwo: event.reserveLamport, progressMcap },
-      { new: true })
-    console.log("handleSwapEvent::updateCoin", updateCoin)
+      {
+        reserveOne: event.reserveToken,
+        reserveTwo: event.reserveLamport,
+        progressMcap,
+      },
+      { new: true }
+    );
+    console.log("handleSwapEvent::updateCoin", updateCoin);
     coinKing();
-    if (io != null) io.emit("Swap", event.mint, newTx)
+    if (io != null) io.emit("Swap", event.mint, newTx);
   } catch (error) {
     console.log("handleSwapEvent: ", error);
-    return "Swap failed"
+    return "Swap failed";
   }
   console.log("Swap Event received: end");
 };
@@ -142,33 +149,17 @@ const handleSwapEvent = async (event: any) => {
 // Function to handle `completeEvent`
 const handleCompleteEvent = async (event: any) => {
   console.log("Complete Event received:", event);
-  const cpIx = ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 });
-  const cuIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 });
-  const transaction = new Transaction()
-  const tx = await program.methods
-    .withdraw()
-    .accounts(event.mint)
-    .instruction()
-  transaction.add(cpIx, cuIx, tx);
-  transaction.feePayer = adminWallet.publicKey;
-  transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-  transaction.sign(adminKeypair);
-  const sTx = transaction.serialize();
-  const signature = await connection.sendRawTransaction(sTx, {
-    preflightCommitment: "confirmed",
-    skipPreflight: false,
-  });
-  const blockhash = await connection.getLatestBlockhash();
 
-  const res = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: blockhash.blockhash,
-      lastValidBlockHeight: blockhash.lastValidBlockHeight,
-    },
-    "confirmed"
-  );
-
+  try {
+    const coin = await Coin.findOne({ token: event.mint.toString() });
+    const userId = await User.findOne({ wallet: event.user }).select("_id");
+    console.log("----------------");
+    console.log(userId, coin);
+  } catch (error) {
+    console.log("handleCompleteEvent: ", error);
+    return "Complete failed";
+  }
+  if (io != null) io.emit("Complete", event.mint, event.bonding_curve);
 };
 
 // Function to handle `withdrawEvent`
@@ -177,9 +168,27 @@ const handleWithdrawEvent = async (event: any) => {
   // Handle your withdraw event here
 };
 
+// Function to handle `migrateEvent`
+const handleMigrateEvent = async (event: any) => {
+  console.log("Migrate Event received:", event);
+
+  try {
+    console.log("----------------");
+    console.log(`token: `, event.token);
+    console.log(`bonding_curve: `, event.bonding_curve);
+    console.log(`token_in: `, event.token_in);
+    console.log(`sol_in: `, event.sol_in);
+    console.log(`lp_mint: `, event.lp_mint);
+  } catch (error) {
+    console.log("handleMigrateEvent: ", error);
+    return "Complete failed";
+  }
+  if (io != null) io.emit("Migrate", event.token, event.token_in, event.sol_in);
+};
+
 // Function to handle `ConfigEvent`
 const handleConfigEvent = async (event: any) => {
-  console.log("Withdraw Event received:", event);
+  console.log("Config Event received:", event);
   // Handle your withdraw event here
   await CurveConfig.updateOne(
     {},
@@ -193,29 +202,46 @@ let eventListenerConnected: boolean = false;
 export const listenerForEvents = async () => {
   console.log("Listening for events...");
   if (eventListenerConnected == true) return;
-  eventListenerConnected = true
+  eventListenerConnected = true;
   // Add listeners for each event
-  const launchListenerId = program.addEventListener("launchEvent", handleLaunchEvent);
+  const launchListenerId = program.addEventListener(
+    "launchEvent",
+    handleLaunchEvent
+  );
   const swapListenerId = program.addEventListener("swapEvent", handleSwapEvent);
-  const completeListenerId = program.addEventListener("completeEvent", handleCompleteEvent);
-  const withdrawListenerId = program.addEventListener("withdrawEvent", handleWithdrawEvent);
-  // const configListenerId = program.addEventListener("configEvent", handleConfigEvent);
+  const completeListenerId = program.addEventListener(
+    "completeEvent",
+    handleCompleteEvent
+  );
+  const withdrawListenerId = program.addEventListener(
+    "withdrawEvent",
+    handleWithdrawEvent
+  );
+  const migrateListenerId = program.addEventListener(
+    "migrateEvent",
+    handleMigrateEvent
+  );
+  // const configListenerId = program.addEventListener(
+  //   "configEvent",
+  //   handleConfigEvent
+  // );
   console.log("Listeners added with IDs:", {
     launch: launchListenerId,
     swap: swapListenerId,
     complete: completeListenerId,
     withdraw: withdrawListenerId,
+    migrate: migrateListenerId,
     // config: configListenerId,
   });
 };
 
 // Call the listener function to start listening for events
-listenerForEvents().catch(err => {
+listenerForEvents().catch((err) => {
   console.error("Error setting up listener:", err);
 });
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // TODO: use a better API source

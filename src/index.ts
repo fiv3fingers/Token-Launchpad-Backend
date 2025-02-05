@@ -20,8 +20,9 @@ import {
 } from "./program/web3";
 import CurveConfig from './models/CurveConfig';
 import curveRoutes from './routes/curveRoutes';
-
+console.log("kill1")
 const app = express();
+console.log("kill")
 const port = process.env.PORT || 5000;
 
 const whitelist = ["http://localhost:3000"];
