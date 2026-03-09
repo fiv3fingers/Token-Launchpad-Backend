@@ -314,6 +314,6 @@ Pumpfun-Backend/
 
 ---
 
-## License
+## Author
 
-ISC.
+[Telegram](https://t.me/WebFiveFingers)
